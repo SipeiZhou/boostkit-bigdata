@@ -59,6 +59,8 @@ import io.prestosql.operator.TaskOutputOperator;
 import io.prestosql.operator.WindowFunctionDefinition;
 import io.prestosql.operator.aggregation.AccumulatorFactory;
 import io.prestosql.operator.exchange.LocalExchange;
+import io.prestosql.operator.exchange.LocalExchangeSinkOperator;
+import io.prestosql.operator.exchange.LocalExchangeSourceOperator;
 import io.prestosql.operator.index.IndexJoinLookupStats;
 import io.prestosql.operator.project.CursorProcessor;
 import io.prestosql.operator.project.PageProcessor;
@@ -143,8 +145,6 @@ import nova.hetu.olk.operator.WindowOmniOperator;
 import nova.hetu.olk.operator.filterandproject.FilterAndProjectOmniOperator;
 import nova.hetu.olk.operator.filterandproject.OmniExpressionCompiler;
 import nova.hetu.olk.operator.filterandproject.OmniRowExpressionUtil;
-import nova.hetu.olk.operator.localexchange.LocalExchangeSinkOmniOperator;
-import nova.hetu.olk.operator.localexchange.LocalExchangeSourceOmniOperator;
 import nova.hetu.olk.operator.localexchange.OmniLocalExchange;
 import nova.hetu.olk.tool.OperatorUtils;
 import nova.hetu.olk.tool.VecAllocatorHelper;
@@ -901,7 +901,7 @@ public class OmniLocalExecutionPlanner
             checkArgument(
                     node.getPartitioningScheme().getPartitioning().getHandle().equals(FIXED_PASSTHROUGH_DISTRIBUTION));
 
-            LocalExchange.LocalExchangeFactory exchangeFactory = new OmniLocalExchange.OmniLocalExchangeFactory(
+            LocalExchange.LocalExchangeFactory exchangeFactory = new LocalExchange.LocalExchangeFactory(
                     node.getPartitioningScheme().getPartitioning().getHandle(), operatorsCount, types,
                     ImmutableList.of(), Optional.empty(), source.getPipelineExecutionStrategy(),
                     maxLocalExchangeBufferSize, true, node.getAggregationType());
@@ -910,9 +910,9 @@ public class OmniLocalExecutionPlanner
             List<Symbol> expectedLayout = node.getInputs().get(0);
             Function<Page, Page> pagePreprocessor = enforceLayoutProcessor(expectedLayout, source.getLayout());
 
-            operatorFactories.add(new LocalExchangeSinkOmniOperator.LocalExchangeSinkOmniOperatorFactory(
+            operatorFactories.add(new LocalExchangeSinkOperator.LocalExchangeSinkOperatorFactory(
                     exchangeFactory, subContext.getNextOperatorId(), node.getId(), exchangeFactory.newSinkFactoryId(),
-                    pagePreprocessor, types));
+                    pagePreprocessor));
 
             context.addDriverFactory(subContext.isInputDriver(), false, operatorFactories,
                     subContext.getDriverInstanceCount(), source.getPipelineExecutionStrategy());
@@ -929,7 +929,7 @@ public class OmniLocalExecutionPlanner
             for (int i = 0; i < source.getTypes().size(); i++) {
                 outputChannels.add(i);
             }
-
+            // Here use LocalMergeSourceOmniOperator to sort pages
             OperatorFactory operatorFactory = new LocalMergeSourceOmniOperator.LocalMergeSourceOmniOperatorFactory(
                     context.getNextOperatorId(), context.getNextOperatorId(), node.getId(), exchangeFactory, types,
                     orderingCompiler, sortChannels, orderings, outputChannels.build());
@@ -972,10 +972,6 @@ public class OmniLocalExecutionPlanner
                 }
             }
 
-            // Because OmniLocalExchange extends from LocalExchange and replaces
-            // PartitioningExchanger with OmniPartitioningExchanger, where the omni block
-            // will be closed inside, we use OmniLocalExchangeFactory to generate
-            // LocalExchangeSinkOmniOperator and LocalExchangeSourceOmniOperatorFactory.
             LocalExchange.LocalExchangeFactory localExchangeFactory = new OmniLocalExchange.OmniLocalExchangeFactory(
                     node.getPartitioningScheme().getPartitioning().getHandle(), driverInstanceCount, types, channels,
                     hashChannel, exchangeSourcePipelineExecutionStrategy, maxLocalExchangeBufferSize, false,
@@ -991,9 +987,9 @@ public class OmniLocalExecutionPlanner
                 Function<Page, Page> pagePreprocessor = enforceLayoutProcessor(expectedLayout, source.getLayout());
                 List<OperatorFactory> operatorFactories = new ArrayList<>(source.getOperatorFactories());
 
-                operatorFactories.add(new LocalExchangeSinkOmniOperator.LocalExchangeSinkOmniOperatorFactory(
+                operatorFactories.add(new LocalExchangeSinkOperator.LocalExchangeSinkOperatorFactory(
                         localExchangeFactory, subContext.getNextOperatorId(), node.getId(),
-                        localExchangeFactory.newSinkFactoryId(), pagePreprocessor, types));
+                        localExchangeFactory.newSinkFactoryId(), pagePreprocessor));
 
                 context.addDriverFactory(subContext.isInputDriver(), false, operatorFactories,
                         subContext.getDriverInstanceCount(), exchangeSourcePipelineExecutionStrategy);
@@ -1016,8 +1012,8 @@ public class OmniLocalExecutionPlanner
             verify(context.getDriverInstanceCount().getAsInt() == localExchangeFactory.getBufferCount(),
                     "driver instance count must match the number of exchange partitions");
 
-            OperatorFactory operatorFactory = new LocalExchangeSourceOmniOperator.LocalExchangeSourceOmniOperatorFactory(
-                    context.getNextOperatorId(), node.getId(), localExchangeFactory, totalSinkCount, types);
+            OperatorFactory operatorFactory = new LocalExchangeSourceOperator.LocalExchangeSourceOperatorFactory(
+                    context.getNextOperatorId(), node.getId(), localExchangeFactory, totalSinkCount);
             return new PhysicalOperation(operatorFactory, makeLayout(node), context,
                     exchangeSourcePipelineExecutionStrategy);
         }

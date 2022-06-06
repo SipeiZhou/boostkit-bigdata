@@ -83,7 +83,7 @@ public class OmniPartitioningExchanger
         }
         VecAllocator allocator = VecAllocatorHelper.createOperatorLevelAllocator(taskContext,
                 VecAllocator.UNLIMIT, VecAllocatorHelper.DEFAULT_RESERVATION, OmniPartitioningExchanger.class);
-        mergingPageOutput = new OmniMergingPageOutput(types, 128000, 256, allocator);
+        mergingPageOutput = new OmniMergingPageOutput(types, 128000, 256, allocator, false);
     }
 
     private Iterator<Optional<Page>> createPagesIterator(Page... pages)

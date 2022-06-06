@@ -153,7 +153,7 @@ public class FilterAndProjectOmniOperator
             OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId,
                     FilterAndProjectOmniOperator.class.getSimpleName());
             return new FilterAndProjectOmniOperator(operatorContext, processor.get(),
-                    new OmniMergingPageOutput(types, minOutputPageSize.toBytes(), minOutputPageRowCount, vecAllocator));
+                    new OmniMergingPageOutput(types, minOutputPageSize.toBytes(), minOutputPageRowCount, vecAllocator, true));
         }
 
         @Override
